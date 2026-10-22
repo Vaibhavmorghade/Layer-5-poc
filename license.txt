@@ -1,0 +1,11 @@
+Model Information:
+* title:	City map free
+* source:	https://sketchfab.com/3d-models/city-map-free-00c4aa34478b492bafa37bd198587d14
+* author:	Katydid (https://sketchfab.com/Katydid.)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "City map free" (https://sketchfab.com/3d-models/city-map-free-00c4aa34478b492bafa37bd198587d14) by Katydid (https://sketchfab.com/Katydid.) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
