@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Layer 5 viewer</title>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./node_modules/three/build/three.module.js",
+    "three/addons/": "./node_modules/three/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// mode=rgb (default) or mode=id. Person 4 owns the id branch below.
+const mode = new URLSearchParams(location.search).get('mode') || 'rgb';
+
+window.sceneReady = false;
+window.sceneError = null;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: mode !== 'id',          // id mode must have no antialiasing
+  preserveDrawingBuffer: true        // needed for toDataURL
+});
+renderer.setPixelRatio(1);
+renderer.setSize(1280, 800);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(mode === 'id' ? 0x000000 : 0x9ec9ea);
+
+// Lights (only matter in rgb mode)
+scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+sun.position.set(200, 400, 100);
+scene.add(sun);
+
+const camera = new THREE.PerspectiveCamera(60, 1280 / 800, 0.5, 5000);
+let mixer = null;
+
+new GLTFLoader().load(
+  'city/scene.gltf',
+  (gltf) => {
+    // Hide the outline line objects
+    gltf.scene.traverse((o) => {
+      if (o.isLineSegments || o.isLine) o.visible = false;
+    });
+    scene.add(gltf.scene);
+
+    // Animation (12 s loop)
+    mixer = new THREE.AnimationMixer(gltf.scene);
+    if (gltf.animations.length > 0) {
+      mixer.clipAction(gltf.animations[0]).play();
+    }
+
+    if (mode === 'id') {
+      // ---- PERSON 4: add the ID-render branch here ----
+      // Replace each object's materials with flat MeshBasicMaterial,
+      // colour = (object_id, 0, 0). Use gl.parser.getDependency('node', source_node).
+      // Also set THREE.ColorManagement.enabled = false and
+      // renderer.outputColorSpace = THREE.LinearSRGBColorSpace.
+      // -------------------------------------------------
+    }
+
+    window.sceneReady = true;
+    // Show a default view so you can check the page by eye
+    renderFrame({
+      t: 0, pos: [175, 147, -76], look_at: [115, 97, -76],
+      fov_deg: 60, width: 1280, height: 800
+    });
+  },
+  undefined,
+  (err) => { window.sceneError = String(err); console.error(err); }
+);
+
+// cam = {t, pos, look_at, fov_deg, width, height}; returns a PNG data URL
+window.renderFrame = function (cam) {
+  if (mixer) mixer.setTime(cam.t);
+
+  renderer.setSize(cam.width, cam.height);
+  camera.fov = cam.fov_deg;               // vertical fov
+  camera.aspect = cam.width / cam.height;
+  camera.updateProjectionMatrix();
+
+  camera.position.set(cam.pos[0], cam.pos[1], cam.pos[2]);
+
+  // If looking straight down, the default up vector breaks lookAt
+  const dx = cam.look_at[0] - cam.pos[0];
+  const dy = cam.look_at[1] - cam.pos[1];
+  const dz = cam.look_at[2] - cam.pos[2];
+  const horiz = Math.hypot(dx, dz);
+  if (horiz < 1e-3 * Math.abs(dy)) camera.up.set(0, 0, -1);
+  else camera.up.set(0, 1, 0);
+
+  camera.lookAt(cam.look_at[0], cam.look_at[1], cam.look_at[2]);
+  camera.updateMatrixWorld(true);
+
+  renderer.render(scene, camera);
+  return renderer.domElement.toDataURL('image/png');
+};
+</script>
+</body>
+</html>
