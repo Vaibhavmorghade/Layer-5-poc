@@ -23,6 +23,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // mode=rgb (default) or mode=id. Person 4 owns the id branch below.
 const mode = new URLSearchParams(location.search).get('mode') || 'rgb';
+if (mode === 'id') THREE.ColorManagement.enabled = false;
 
 window.sceneReady = false;
 window.sceneError = null;
@@ -32,6 +33,9 @@ const renderer = new THREE.WebGLRenderer({
   preserveDrawingBuffer: true        // needed for toDataURL
 });
 renderer.setPixelRatio(1);
+if (mode === 'id') {
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+}
 renderer.setSize(1280, 800);
 document.body.appendChild(renderer.domElement);
 
@@ -47,9 +51,83 @@ scene.add(sun);
 const camera = new THREE.PerspectiveCamera(60, 1280 / 800, 0.5, 5000);
 let mixer = null;
 
+const flatMaterialCache = new Map();
+
+function getFlatMaterial(objectId) {
+  if (!flatMaterialCache.has(objectId)) {
+    flatMaterialCache.set(
+      objectId,
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(objectId / 255, 0, 0),
+        side: THREE.DoubleSide,
+        toneMapped: false
+      })
+    );
+  }
+
+  return flatMaterialCache.get(objectId);
+}
+
+async function applyIdMaterials(gltf) {
+  const response = await fetch('city/scene_manifest.json');
+
+  if (!response.ok) {
+    throw new Error('Could not load city/scene_manifest.json');
+  }
+
+  const manifest = await response.json();
+
+  // Make the complete scene black first.
+  // This preserves depth occlusion from roads and buildings.
+  gltf.scene.traverse((node) => {
+    if (node.isMesh) {
+      node.material = getFlatMaterial(0);
+    }
+  });
+
+  // Assign each object's ID to its source-node subtree.
+  for (const object of manifest.objects) {
+    const id = Number(object.object_id);
+    const sourceNode = object.source_node;
+
+    if (!Number.isInteger(id) || id < 1 || id > 255) {
+      throw new Error(`Invalid object ID: ${object.object_id}`);
+    }
+
+    if (sourceNode == null) {
+      console.warn(`Object ${id} has no source_node; skipping ID render.`);
+      continue;
+    }
+
+    const node = await gltf.parser.getDependency(
+      'node',
+      sourceNode
+    );
+
+    if (!node) {
+      throw new Error(`Missing glTF node ${sourceNode} for object ${id}`);
+    }
+
+    let meshCount = 0;
+
+    node.traverse((child) => {
+      if (child.isMesh) {
+        child.material = getFlatMaterial(id);
+        meshCount++;
+      }
+    });
+
+    if (meshCount === 0) {
+      throw new Error(
+        `No meshes found for object ${id}, source_node ${sourceNode}`
+      );
+    }
+  }
+}
+
 new GLTFLoader().load(
   'city/scene.gltf',
-  (gltf) => {
+  async (gltf) => {
     // Hide the outline line objects
     gltf.scene.traverse((o) => {
       if (o.isLineSegments || o.isLine) o.visible = false;
@@ -63,12 +141,13 @@ new GLTFLoader().load(
     }
 
     if (mode === 'id') {
-      // ---- PERSON 4: add the ID-render branch here ----
-      // Replace each object's materials with flat MeshBasicMaterial,
-      // colour = (object_id, 0, 0). Use gl.parser.getDependency('node', source_node).
-      // Also set THREE.ColorManagement.enabled = false and
-      // renderer.outputColorSpace = THREE.LinearSRGBColorSpace.
-      // -------------------------------------------------
+      try {
+        await applyIdMaterials(gltf);
+      } catch (error) {
+        window.sceneError = String(error);
+        console.error(error);
+        return;
+      }
     }
 
     window.sceneReady = true;
